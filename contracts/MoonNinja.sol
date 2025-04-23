@@ -42,6 +42,8 @@ contract MoonNinja {
 
     TradeDetails[] public last250Trades;
 
+    address public feeAddress;
+
     // Events
 
     event TradeExecuted(
@@ -65,6 +67,10 @@ contract MoonNinja {
         address developer
     );
 
+    constructor() {
+        feeAddress = msg.sender;
+    }
+
     function createToken(
         string memory name,
         string memory symbol,
@@ -83,7 +89,8 @@ contract MoonNinja {
             telegram,
             website,
             msg.sender,
-            address(this)
+            address(this),
+            address(feeAddress)
         );
         deployedTokens.push(address(newToken));
         isDeployedToken[address(newToken)] = true;
@@ -182,6 +189,9 @@ contract MoonNinjaToken is ERC20 {
 
     address public moonNinja;
 
+    uint public immutable tradingFee = 1;
+    address public bondingFeeAddress;
+
     struct TradeDetails {
         bool isBuy;
         address tokenAddress;
@@ -220,7 +230,8 @@ contract MoonNinjaToken is ERC20 {
         string memory _telegram,
         string memory _website,
         address _developer,
-        address moonNinjaAddress
+        address _moonNinjaAddress,
+        address _bondingFeeAddress
     ) ERC20(_name, _symbol) {
         description = _description;
         image = _image;
@@ -228,16 +239,31 @@ contract MoonNinjaToken is ERC20 {
         telegram = _telegram;
         website = _website;
         developer = _developer;
-        moonNinja = moonNinjaAddress;
+        moonNinja = _moonNinjaAddress;
+        bondingFeeAddress = _bondingFeeAddress;
         _mint(address(this), maxSupply);
+    }
+
+    function applyFee(uint amount) internal view returns (uint, uint) {
+        uint fee = (amount * tradingFee) / 100;
+        uint netAmount = amount - fee;
+
+        return (fee, netAmount);
     }
 
     function buyTokens() public payable {
         require(msg.value > 1, "send some ETH");
-        uint tokensPerETH = quoteBuy(msg.value);
-        uint tokenAmount = (msg.value * tokensPerETH) / 1e18;
+
+        uint fee;
+        uint netAmount;
+        (fee, netAmount) = applyFee(msg.value);
+
+        uint tokensPerETH = quoteBuy(netAmount);
+        uint tokenAmount = (netAmount * tokensPerETH) / 1e18;
         require(balanceOf(address(this)) > tokenAmount, "sold out");
+
         _transfer(address(this), msg.sender, tokenAmount);
+        payable(address(bondingFeeAddress)).transfer(fee);
 
         TradeDetails memory trade = TradeDetails(
             true,
@@ -270,7 +296,13 @@ contract MoonNinjaToken is ERC20 {
             "Insufficient contract balance"
         );
         _transfer(msg.sender, address(this), _tokenAmount);
-        payable(msg.sender).transfer(ethAmount);
+
+        uint fee;
+        uint netAmount;
+        (fee, netAmount) = applyFee(ethAmount);
+
+        payable(bondingFeeAddress).transfer(fee);
+        payable(msg.sender).transfer(netAmount);
 
         TradeDetails memory trade = TradeDetails(
             false,

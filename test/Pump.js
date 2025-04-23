@@ -43,12 +43,14 @@ describe("MoonNinja", function () {
   describe("MoonNinjaToken Interaction", function () {
     let moonNinjaToken;
     let iters = 125;
+    let feeAddressBalanceStart;
 
     before(async () => {
       moonNinjaToken = await ethers.getContractAt(
         "MoonNinjaToken",
         await moonNinja.deployedTokens(0)
       );
+      feeAddressBalanceStart = await ethers.provider.getBalance(owner.address);
     });
 
     it("Should have a max supply of 1,000,000 MEME tokens", async function () {
@@ -150,6 +152,15 @@ describe("MoonNinja", function () {
       await expect(
         moonNinja.tradeEvent(true, addr1.address, 1, 1)
       ).to.be.revertedWith("Caller must be a valid MoonNinja token");
+    });
+
+    it("Should collect fees correctly", async function () {
+      const feeAddressBalanceEnd = await ethers.provider.getBalance(
+        owner.address
+      );
+      const feeAddressBalanceDiff =
+        feeAddressBalanceEnd - feeAddressBalanceStart;
+      expect(feeAddressBalanceDiff).to.be.gt(0);
     });
   });
 });
