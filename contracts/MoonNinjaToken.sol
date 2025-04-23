@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.24;
 
 /*  __  __                   _   _ _       _       
    |  \/  |                 | \ | (_)     (_)      
@@ -11,10 +11,13 @@ pragma solidity ^0.8.0;
                                         |__/   
 */
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "./MoonNinja.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
-contract MoonNinjaToken is ERC20 {
+import "./MoonNinja.sol";
+import "./LiquidityManager.sol";
+
+contract MoonNinjaToken is Initializable, ERC20Upgradeable, LiquidityManager {
     string public description;
     string public image;
     string public twitter;
@@ -53,11 +56,19 @@ contract MoonNinjaToken is ERC20 {
     TradeDetails[] public trades;
     mapping(address => TradeDetails[]) public userTrades;
 
+    bool public initialized = false;
+
     event TokensPurchased(address indexed purchaser, uint amount, uint price);
     event TokensSold(address indexed seller, uint amount, uint price);
-    event LiquidityAdded(uint tokenAmount, uint ethAmount);
 
-    constructor(
+    //event LiquidityAdded(uint tokenAmount, uint ethAmount);
+
+    constructor() {
+        // Prevent initialization of the implementation contract itself
+        _disableInitializers();
+    }
+
+    function initialize(
         string memory _name,
         string memory _symbol,
         string memory _description,
@@ -68,7 +79,9 @@ contract MoonNinjaToken is ERC20 {
         address _developer,
         address _moonNinjaAddress,
         address _bondingFeeAddress
-    ) ERC20(_name, _symbol) {
+    ) external initializer {
+        __ERC20_init(_name, _symbol);
+
         description = _description;
         image = _image;
         twitter = _twitter;
@@ -77,10 +90,19 @@ contract MoonNinjaToken is ERC20 {
         developer = _developer;
         moonNinja = _moonNinjaAddress;
         bondingFeeAddress = _bondingFeeAddress;
+
         _mint(address(this), maxSupply);
     }
 
-    function applyFee(uint amount) internal view returns (uint, uint) {
+    function _setNameAndSymbol(
+        string memory _name,
+        string memory _symbol
+    ) internal pure {
+        _name = _name;
+        _symbol = _symbol;
+    }
+
+    function applyFee(uint amount) internal pure returns (uint, uint) {
         uint fee = (amount * tradingFee) / 100;
         uint netAmount = amount - fee;
 
@@ -214,5 +236,19 @@ contract MoonNinjaToken is ERC20 {
                 telegram,
                 website
             );
+    }
+
+    function initializeLiquidity(address uniswapRouter) external {
+        require(msg.sender == developer, "Only dev");
+
+        uint tokenBalance = balanceOf(address(this));
+        uint ethBalance = address(this).balance;
+
+        _createAndAddLiquidity(
+            uniswapRouter,
+            address(this),
+            tokenBalance,
+            ethBalance
+        );
     }
 }

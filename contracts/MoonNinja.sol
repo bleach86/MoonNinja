@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.24;
 
 /*  __  __                   _   _ _       _       
    |  \/  |                 | \ | (_)     (_)      
@@ -12,6 +12,25 @@ pragma solidity ^0.8.0;
 */
 
 import "./MoonNinjaToken.sol";
+import "@openzeppelin/contracts/proxy/Clones.sol";
+
+import "hardhat/console.sol";
+
+// Interface for the token's initialize function
+interface IMoonNinjaToken {
+    function initialize(
+        string memory _name,
+        string memory _symbol,
+        string memory _description,
+        string memory _image,
+        string memory _twitter,
+        string memory _telegram,
+        string memory _website,
+        address _developer,
+        address _moonNinjaAddress,
+        address _bondingFeeAddress
+    ) external;
+}
 
 contract MoonNinja {
     // MoonNinja is a factory contract for creating and managing MoonNinja tokens
@@ -36,15 +55,10 @@ contract MoonNinja {
         uint timestamp;
     }
 
-    struct TradeTotals {
-        uint totalTrades;
-        uint totalBuyTrades;
-        uint totalSellTrades;
-    }
-
     TradeDetails[] public last250Trades;
 
     address public feeAddress;
+    address public tokenLogicAddress;
 
     // Events
 
@@ -69,8 +83,9 @@ contract MoonNinja {
         address developer
     );
 
-    constructor() {
+    constructor(address _tokenLogicAddress) {
         feeAddress = msg.sender;
+        tokenLogicAddress = _tokenLogicAddress;
     }
 
     function createToken(
@@ -82,7 +97,11 @@ contract MoonNinja {
         string memory telegram,
         string memory website
     ) public {
-        MoonNinjaToken newToken = new MoonNinjaToken(
+        // Deploy using OZ Clones (EIP-1167)
+        address cloneAddress = Clones.clone(tokenLogicAddress);
+
+        // Initialize the clone contract
+        IMoonNinjaToken(cloneAddress).initialize(
             name,
             symbol,
             description,
@@ -92,13 +111,14 @@ contract MoonNinja {
             website,
             msg.sender,
             address(this),
-            address(feeAddress)
+            feeAddress
         );
-        deployedTokens.push(address(newToken));
-        isDeployedToken[address(newToken)] = true;
+
+        deployedTokens.push(cloneAddress);
+        isDeployedToken[cloneAddress] = true;
 
         emit TokenCreated(
-            address(newToken),
+            cloneAddress,
             name,
             symbol,
             description,
@@ -108,6 +128,8 @@ contract MoonNinja {
             website,
             msg.sender
         );
+
+        console.log("Token created at address: ", cloneAddress);
     }
 
     function getDeployedTokens() public view returns (address[] memory) {
@@ -175,7 +197,7 @@ contract MoonNinja {
         return last250Trades[last250Trades.length - 1];
     }
 
-    function getTradeTotals() public view returns (TradeTotals memory) {
-        return TradeTotals(totalTrades, totalBuyTrades, totalSellTrades);
+    function getTradeTotals() public view returns (uint, uint, uint) {
+        return (totalTrades, totalBuyTrades, totalSellTrades);
     }
 }

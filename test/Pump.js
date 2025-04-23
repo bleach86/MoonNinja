@@ -2,12 +2,18 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
 describe("MoonNinja", function () {
-  let moonNinja, MoonNinja, MemeToken, owner, addr1, addr2;
+  let moonNinja, MoonNinja, MoonNinjaToken, owner, addr1, addr2, moonNinjaToken;
 
   before(async () => {
     [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy MoonNinjaToken first
+    MoonNinjaToken = await ethers.getContractFactory("MoonNinjaToken");
+    moonNinjaToken = await MoonNinjaToken.deploy();
+
+    // Now deploy MoonNinja contract and pass the token address
     MoonNinja = await ethers.getContractFactory("MoonNinja");
-    moonNinja = await MoonNinja.deploy();
+    moonNinja = await MoonNinja.deploy(moonNinjaToken.target);
   });
 
   describe("Deployment", function () {
@@ -17,8 +23,6 @@ describe("MoonNinja", function () {
   });
 
   describe("Creating a MoonNinjaToken", function () {
-    let tokenAddress;
-
     it("Should create a MoonNinjaToken successfully", async function () {
       const createTx = await moonNinja.createToken(
         "MemeToken",
@@ -31,12 +35,25 @@ describe("MoonNinja", function () {
       );
       const receipt = await createTx.wait();
       expect(receipt.status).to.eq(1);
+      //clearImmediate;
+
+      // Retrieve the token address from the event
+
+      console.log("Receipt:", receipt);
+
+      const event = receipt.events?.find(
+        (event) => event.event === "TokenCreated"
+      );
+      console.log("Event:", event);
+      tokenAddress = event?.args?.tokenAddress;
+      console.log("Token Address:", tokenAddress);
+      expect(tokenAddress).to.properAddress;
     });
 
     it("Should store deployed token addresses", async function () {
       const deployedTokens = await moonNinja.getDeployedTokens();
       expect(deployedTokens.length).to.equal(1);
-      expect(deployedTokens[0]).to.properAddress;
+      expect(deployedTokens[0]).to.equal(tokenAddress);
     });
   });
 
@@ -48,7 +65,7 @@ describe("MoonNinja", function () {
     before(async () => {
       moonNinjaToken = await ethers.getContractAt(
         "MoonNinjaToken",
-        await moonNinja.deployedTokens(0)
+        tokenAddress
       );
       feeAddressBalanceStart = await ethers.provider.getBalance(owner.address);
     });
