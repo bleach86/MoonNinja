@@ -2,7 +2,14 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
 describe("MoonNinja", function () {
-  let moonNinja, MoonNinja, MoonNinjaToken, owner, addr1, addr2, moonNinjaToken;
+  let moonNinja,
+    MoonNinja,
+    MoonNinjaToken,
+    owner,
+    addr1,
+    addr2,
+    moonNinjaToken,
+    tokenAddress;
 
   before(async () => {
     [owner, addr1, addr2] = await ethers.getSigners();
@@ -23,8 +30,8 @@ describe("MoonNinja", function () {
   });
 
   describe("Creating a MoonNinjaToken", function () {
-    it("Should create a MoonNinjaToken successfully", async function () {
-      const createTx = await moonNinja.createToken(
+    it("Should create a MoonNinjaToken and show event details", async function () {
+      const tx = await moonNinja.createToken(
         "MemeToken",
         "MEME",
         "A fun token",
@@ -33,21 +40,22 @@ describe("MoonNinja", function () {
         "@telegram",
         "https://website.com"
       );
-      const receipt = await createTx.wait();
-      expect(receipt.status).to.eq(1);
-      //clearImmediate;
 
-      // Retrieve the token address from the event
+      const receipt = await tx.wait();
 
-      console.log("Receipt:", receipt);
+      const event = receipt.logs
+        .map((log) => {
+          try {
+            return moonNinja.interface.parseLog(log);
+          } catch {
+            return null;
+          }
+        })
+        .find((e) => e && e.name === "TokenCreated");
 
-      const event = receipt.events?.find(
-        (event) => event.event === "TokenCreated"
-      );
-      console.log("Event:", event);
-      tokenAddress = event?.args?.tokenAddress;
-      console.log("Token Address:", tokenAddress);
-      expect(tokenAddress).to.properAddress;
+      if (!event) throw new Error("❌ TokenCreated event not found.");
+
+      tokenAddress = event.args.tokenAddress;
     });
 
     it("Should store deployed token addresses", async function () {
@@ -160,9 +168,9 @@ describe("MoonNinja", function () {
 
     it("Should allow users to get platform trade totals", async function () {
       const tradeTotals = await moonNinja.getTradeTotals();
-      expect(tradeTotals.totalTrades).to.be.eq(iters * 2 + 2);
-      expect(tradeTotals.totalBuyTrades).to.be.eq(iters + 1);
-      expect(tradeTotals.totalSellTrades).to.be.eq(iters + 1);
+      expect(tradeTotals[0]).to.be.eq(iters * 2 + 2);
+      expect(tradeTotals[1]).to.be.eq(iters + 1);
+      expect(tradeTotals[2]).to.be.eq(iters + 1);
     });
 
     it("Should not allow users to execute tradeEvent", async function () {

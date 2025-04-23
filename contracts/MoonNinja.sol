@@ -14,8 +14,6 @@ pragma solidity ^0.8.24;
 import "./MoonNinjaToken.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
 
-import "hardhat/console.sol";
-
 // Interface for the token's initialize function
 interface IMoonNinjaToken {
     function initialize(
@@ -128,8 +126,6 @@ contract MoonNinja {
             website,
             msg.sender
         );
-
-        console.log("Token created at address: ", cloneAddress);
     }
 
     function getDeployedTokens() public view returns (address[] memory) {
