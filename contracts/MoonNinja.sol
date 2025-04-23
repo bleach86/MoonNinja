@@ -11,7 +11,6 @@ pragma solidity ^0.8.24;
                                         |__/   
 */
 
-import "./MoonNinjaToken.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
 
 // Interface for the token's initialize function

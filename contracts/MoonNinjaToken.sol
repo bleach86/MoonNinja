@@ -14,8 +14,17 @@ pragma solidity ^0.8.24;
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
-import "./MoonNinja.sol";
 import "./LiquidityManager.sol";
+
+// Interface for sending trade events to the MoonNinja contract
+interface IMoonNinja {
+    function tradeEvent(
+        bool isBuy,
+        address trader,
+        uint amount,
+        uint price
+    ) external;
+}
 
 contract MoonNinjaToken is Initializable, ERC20Upgradeable, LiquidityManager {
     string public description;
@@ -137,7 +146,7 @@ contract MoonNinjaToken is Initializable, ERC20Upgradeable, LiquidityManager {
 
         emit TokensPurchased(msg.sender, tokenAmount, tokensPerETH);
 
-        MoonNinja(moonNinja).tradeEvent(
+        IMoonNinja(moonNinja).tradeEvent(
             true,
             address(msg.sender),
             tokenAmount,
@@ -176,7 +185,7 @@ contract MoonNinjaToken is Initializable, ERC20Upgradeable, LiquidityManager {
 
         emit TokensSold(msg.sender, _tokenAmount, tokensPerETH);
 
-        MoonNinja(moonNinja).tradeEvent(
+        IMoonNinja(moonNinja).tradeEvent(
             false,
             address(msg.sender),
             _tokenAmount,
