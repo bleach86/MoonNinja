@@ -1,26 +1,26 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
-describe("MemeTokenFactory", function () {
-  let memeTokenFactory, MemeTokenFactory, MemeToken, owner, addr1, addr2;
+describe("MoonNinja", function () {
+  let moonNinja, MoonNinja, MemeToken, owner, addr1, addr2;
 
   before(async () => {
     [owner, addr1, addr2] = await ethers.getSigners();
-    MemeTokenFactory = await ethers.getContractFactory("MemeTokenFactory");
-    memeTokenFactory = await MemeTokenFactory.deploy();
+    MoonNinja = await ethers.getContractFactory("MoonNinja");
+    moonNinja = await MoonNinja.deploy();
   });
 
   describe("Deployment", function () {
-    it("Should deploy MemeTokenFactory contract", async function () {
-      expect(await memeTokenFactory.getAddress()).to.properAddress;
+    it("Should deploy MoonNinja contract", async function () {
+      expect(await moonNinja.getAddress()).to.properAddress;
     });
   });
 
-  describe("Creating a MemeToken", function () {
+  describe("Creating a MoonNinjaToken", function () {
     let tokenAddress;
 
-    it("Should create a MemeToken successfully", async function () {
-      const createTx = await memeTokenFactory.createToken(
+    it("Should create a MoonNinjaToken successfully", async function () {
+      const createTx = await moonNinja.createToken(
         "MemeToken",
         "MEME",
         "A fun token",
@@ -34,57 +34,122 @@ describe("MemeTokenFactory", function () {
     });
 
     it("Should store deployed token addresses", async function () {
-      const deployedTokens = await memeTokenFactory.getDeployedTokens();
+      const deployedTokens = await moonNinja.getDeployedTokens();
       expect(deployedTokens.length).to.equal(1);
       expect(deployedTokens[0]).to.properAddress;
     });
   });
 
-  describe("MemeToken Interaction", function () {
-    let memeToken;
+  describe("MoonNinjaToken Interaction", function () {
+    let moonNinjaToken;
+    let iters = 125;
 
     before(async () => {
-      memeToken = await ethers.getContractAt("MemeToken", await memeTokenFactory.deployedTokens(0));
+      moonNinjaToken = await ethers.getContractAt(
+        "MoonNinjaToken",
+        await moonNinja.deployedTokens(0)
+      );
     });
 
     it("Should have a max supply of 1,000,000 MEME tokens", async function () {
-      const totalSupply = await memeToken.totalSupply();
+      const totalSupply = await moonNinjaToken.totalSupply();
       expect(totalSupply).to.equal(ethers.parseUnits("1000000", 18));
     });
 
     it("Should allow users to buy tokens", async function () {
       const ethToSend = ethers.parseUnits("1", "ether");
-      await memeToken.connect(addr1).buyTokens({ value: ethToSend });
-      const balance = await memeToken.balanceOf(addr1.address);
+      await moonNinjaToken.connect(addr1).buyTokens({ value: ethToSend });
+      const balance = await moonNinjaToken.balanceOf(addr1.address);
       expect(balance).to.be.greaterThan(0);
     });
 
     it("Should allow users to sell tokens", async function () {
-      const tokenAmountToSell = await memeToken.balanceOf(addr1.address);
-      await memeToken.connect(addr1).approve(await memeToken.getAddress(), tokenAmountToSell);
+      const tokenAmountToSell = await moonNinjaToken.balanceOf(addr1.address);
+      await moonNinjaToken
+        .connect(addr1)
+        .approve(await moonNinjaToken.getAddress(), tokenAmountToSell);
       const initialEthBalance = await ethers.provider.getBalance(addr1.address);
-      await memeToken.connect(addr1).sellTokens(tokenAmountToSell);
+      await moonNinjaToken.connect(addr1).sellTokens(tokenAmountToSell);
       const finalEthBalance = await ethers.provider.getBalance(addr1.address);
       expect(finalEthBalance).to.be.gt(initialEthBalance);
     });
 
     it("Should not allow buying with less than 1 wei", async function () {
-      await expect(memeToken.connect(addr2).buyTokens({ value: 1 }))
-        .to.be.revertedWith("send some ETH");
+      await expect(
+        moonNinjaToken.connect(addr2).buyTokens({ value: 1 })
+      ).to.be.revertedWith("send some ETH");
     });
 
     it("Should not allow selling more tokens than owned", async function () {
-      await expect(memeToken.connect(addr2).sellTokens(ethers.parseUnits("100", 18)))
-        .to.be.revertedWith("too poor");
+      await expect(
+        moonNinjaToken.connect(addr2).sellTokens(ethers.parseUnits("100", 18))
+      ).to.be.revertedWith("too poor");
     });
 
     it("Should allow users to pump", async function () {
       const ethToSend = ethers.parseUnits("1", "ether");
-      for (let i = 0; i < 100; i++) {
-        await memeToken.connect(addr1).buyTokens({ value: ethToSend });
+      for (let i = 0; i < iters; i++) {
+        await moonNinjaToken.connect(addr1).buyTokens({ value: ethToSend });
       }
-      const balance = await memeToken.balanceOf(addr1.address);
+      const balance = await moonNinjaToken.balanceOf(addr1.address);
       expect(balance).to.be.greaterThan(0);
+    });
+
+    it("Should allow users to dump", async function () {
+      const initialBalance = await moonNinjaToken.balanceOf(addr1.address);
+
+      const tokenAmountToSell = ethers.parseEther(
+        `${parseInt(parseInt(initialBalance) / iters)}`
+      );
+
+      for (let i = 0; i < iters; i++) {
+        await moonNinjaToken
+          .connect(addr1)
+          .approve(await moonNinjaToken.getAddress(), tokenAmountToSell);
+        await moonNinjaToken.connect(addr1).sellTokens(tokenAmountToSell);
+      }
+      const finalBalance = await moonNinjaToken.balanceOf(addr1.address);
+    });
+
+    it("Should allow users to get trade history", async function () {
+      const tradeHistory = await moonNinjaToken.getUserTradeHistory(
+        addr1.address
+      );
+      expect(tradeHistory.length).to.be.greaterThan(0);
+    });
+
+    it("Should allow users to get token details", async function () {
+      const tokenDetails = await moonNinjaToken.getTokenDetails();
+
+      expect(tokenDetails.name).to.equal("MemeToken");
+      expect(tokenDetails.symbol).to.equal("MEME");
+      expect(tokenDetails.developer).to.equal(owner.address);
+      expect(tokenDetails.maxSupply).to.equal(ethers.parseUnits("1000000", 18));
+      expect(tokenDetails.description).to.equal("A fun token");
+      expect(tokenDetails.image).to.equal("ipfs://image");
+      expect(tokenDetails.twitter).to.equal("@twitter");
+      expect(tokenDetails.telegram).to.equal("@telegram");
+      expect(tokenDetails.website).to.equal("https://website.com");
+    });
+
+    it("Should allow users to get platform trade history", async function () {
+      const tradeHistory = await moonNinja.getLast250Trades();
+      const expected = Math.min(iters * 2 + 2, 250);
+
+      expect(tradeHistory.length).to.equal(expected);
+    });
+
+    it("Should allow users to get platform trade totals", async function () {
+      const tradeTotals = await moonNinja.getTradeTotals();
+      expect(tradeTotals.totalTrades).to.be.eq(iters * 2 + 2);
+      expect(tradeTotals.totalBuyTrades).to.be.eq(iters + 1);
+      expect(tradeTotals.totalSellTrades).to.be.eq(iters + 1);
+    });
+
+    it("Should not allow users to execute tradeEvent", async function () {
+      await expect(
+        moonNinja.tradeEvent(true, addr1.address, 1, 1)
+      ).to.be.revertedWith("Caller must be a valid MoonNinja token");
     });
   });
 });
