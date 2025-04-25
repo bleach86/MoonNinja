@@ -43,17 +43,6 @@ contract MoonNinja {
     uint public totalBuyTrades;
     uint public totalSellTrades;
 
-    struct TradeDetails {
-        bool isBuy;
-        address tokenAddress;
-        uint amount;
-        uint price;
-        address trader;
-        uint timestamp;
-    }
-
-    TradeDetails[] public last250Trades;
-
     address public feeAddress;
     address public tokenLogicAddress;
 
@@ -147,23 +136,6 @@ contract MoonNinja {
             "Caller must be a valid MoonNinja token"
         );
 
-        TradeDetails memory newTrade = TradeDetails(
-            isBuy,
-            msg.sender,
-            amount,
-            price,
-            trader,
-            block.timestamp
-        );
-        last250Trades.push(newTrade);
-        if (last250Trades.length > 250) {
-            delete last250Trades[0];
-            for (uint i = 1; i < last250Trades.length; i++) {
-                last250Trades[i - 1] = last250Trades[i];
-            }
-            last250Trades.pop();
-        }
-
         totalTrades++;
         if (isBuy) {
             totalBuyTrades++;
@@ -179,17 +151,6 @@ contract MoonNinja {
             trader,
             block.timestamp
         );
-    }
-
-    function getLast250Trades() public view returns (TradeDetails[] memory) {
-        return last250Trades;
-    }
-
-    function getLastTrade() public view returns (TradeDetails memory) {
-        if (last250Trades.length == 0) {
-            revert("No trades executed yet");
-        }
-        return last250Trades[last250Trades.length - 1];
     }
 
     function getTradeTotals() public view returns (uint, uint, uint) {

@@ -14,7 +14,10 @@ pragma solidity ^0.8.24;
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
-import "./LiquidityManager.sol";
+import {MNLiquidityManager} from "./MNLiquidityManager.sol";
+import {BancorFormula} from "./bonding_curve/BancorFormula.sol";
+
+import "forge-std/console.sol";
 
 // Interface for sending trade events to the MoonNinja contract
 interface IMoonNinja {
@@ -26,28 +29,26 @@ interface IMoonNinja {
     ) external;
 }
 
-contract MoonNinjaToken is Initializable, ERC20Upgradeable, LiquidityManager {
+contract MoonNinjaToken is
+    Initializable,
+    ERC20Upgradeable,
+    MNLiquidityManager,
+    BancorFormula
+{
     string public description;
     string public image;
     string public twitter;
     string public telegram;
     string public website;
     address public developer;
-    uint immutable maxSupply = 1_000_000e18;
+    uint immutable maxSupply = 1_000_000_000e18;
 
     address public moonNinja;
 
     uint public immutable tradingFee = 1;
     address public bondingFeeAddress;
 
-    struct TradeDetails {
-        bool isBuy;
-        address tokenAddress;
-        uint amount;
-        uint price;
-        address trader;
-        uint timestamp;
-    }
+    uint32 public connectorWeight;
 
     struct TokenDetails {
         string name;
@@ -62,9 +63,6 @@ contract MoonNinjaToken is Initializable, ERC20Upgradeable, LiquidityManager {
         string website;
     }
 
-    TradeDetails[] public trades;
-    mapping(address => TradeDetails[]) public userTrades;
-
     bool public initialized = false;
 
     event TokensPurchased(address indexed purchaser, uint amount, uint price);
@@ -72,7 +70,7 @@ contract MoonNinjaToken is Initializable, ERC20Upgradeable, LiquidityManager {
 
     //event LiquidityAdded(uint tokenAmount, uint ethAmount);
 
-    constructor() {
+    constructor() MNLiquidityManager() {
         // Prevent initialization of the implementation contract itself
         _disableInitializers();
     }
@@ -99,6 +97,7 @@ contract MoonNinjaToken is Initializable, ERC20Upgradeable, LiquidityManager {
         developer = _developer;
         moonNinja = _moonNinjaAddress;
         bondingFeeAddress = _bondingFeeAddress;
+        connectorWeight = 100000;
 
         _mint(address(this), maxSupply);
     }
@@ -125,110 +124,81 @@ contract MoonNinjaToken is Initializable, ERC20Upgradeable, LiquidityManager {
         uint netAmount;
         (fee, netAmount) = applyFee(msg.value);
 
-        uint tokensPerETH = quoteBuy(netAmount);
-        uint tokenAmount = (netAmount * tokensPerETH) / 1e18;
+        uint tokenAmount = quoteBuy(netAmount);
+        uint currentTokensPerETH = (tokenAmount * 1e18) / netAmount;
+
         require(balanceOf(address(this)) > tokenAmount, "sold out");
 
         _transfer(address(this), msg.sender, tokenAmount);
         payable(address(bondingFeeAddress)).transfer(fee);
 
-        TradeDetails memory trade = TradeDetails(
-            true,
-            address(this),
-            tokenAmount,
-            tokensPerETH,
-            msg.sender,
-            block.timestamp
-        );
-
-        trades.push(trade);
-        userTrades[msg.sender].push(trade);
-
-        emit TokensPurchased(msg.sender, tokenAmount, tokensPerETH);
+        emit TokensPurchased(msg.sender, tokenAmount, currentTokensPerETH);
 
         IMoonNinja(moonNinja).tradeEvent(
             true,
             address(msg.sender),
             tokenAmount,
-            tokensPerETH
+            currentTokensPerETH
         );
     }
 
     function sellTokens(uint _tokenAmount) public {
         require(balanceOf(msg.sender) >= _tokenAmount, "too poor");
-        uint tokensPerETH = quoteSell(_tokenAmount);
-        uint ethAmount = (_tokenAmount * 1e18) / tokensPerETH;
+
+        uint ethAmountReceived = quoteSell(_tokenAmount);
+        uint currentTokensPerETH = (_tokenAmount * 1e18) / ethAmountReceived;
+
         require(
-            address(this).balance >= ethAmount,
+            address(this).balance >= ethAmountReceived,
             "Insufficient contract balance"
         );
         _transfer(msg.sender, address(this), _tokenAmount);
 
         uint fee;
         uint netAmount;
-        (fee, netAmount) = applyFee(ethAmount);
+        (fee, netAmount) = applyFee(ethAmountReceived);
 
         payable(bondingFeeAddress).transfer(fee);
         payable(msg.sender).transfer(netAmount);
 
-        TradeDetails memory trade = TradeDetails(
-            false,
-            address(this),
-            _tokenAmount,
-            tokensPerETH,
-            msg.sender,
-            block.timestamp
-        );
-
-        trades.push(trade);
-        userTrades[msg.sender].push(trade);
-
-        emit TokensSold(msg.sender, _tokenAmount, tokensPerETH);
+        emit TokensSold(msg.sender, _tokenAmount, currentTokensPerETH);
 
         IMoonNinja(moonNinja).tradeEvent(
             false,
             address(msg.sender),
             _tokenAmount,
-            tokensPerETH
+            currentTokensPerETH
         );
     }
 
     function getCurrentPrice() public view returns (uint tokensPerETH) {
-        uint remainingTokens = balanceOf(address(this));
-        uint contractETHBalance = address(this).balance;
-        if (contractETHBalance < 0.01 ether) contractETHBalance = 0.01 ether;
-
-        tokensPerETH = (remainingTokens * 1e18) / contractETHBalance;
+        uint ethAmount = 1e18; // 1 ETH
+        uint tokenAmount = quoteBuy(ethAmount);
+        return (tokenAmount * 1e18) / ethAmount;
     }
 
-    function quoteBuy(uint _ethAmount) public view returns (uint tokensPerETH) {
-        uint currentTokensPerETH = getCurrentPrice();
-        uint tokenAmount = (_ethAmount * currentTokensPerETH) / 1e18;
-        uint remainingTokens = balanceOf(address(this));
-        tokensPerETH =
-            ((remainingTokens - (tokenAmount / 2)) * 1e18) /
-            (address(this).balance + (_ethAmount / 2));
+    function quoteBuy(uint _ethAmount) public view returns (uint) {
+        uint256 connectorBalance = address(this).balance;
+
+        return
+            calculatePurchaseReturn(
+                balanceOf(address(this)),
+                connectorBalance,
+                connectorWeight,
+                _ethAmount
+            );
     }
 
-    function quoteSell(
-        uint _tokenAmount
-    ) public view returns (uint tokensPerETH) {
-        uint currentTokensPerETH = getCurrentPrice();
-        uint ethAmount = (_tokenAmount * 1e18) / currentTokensPerETH;
-        uint remainingTokens = balanceOf(address(this));
-        tokensPerETH =
-            ((remainingTokens + (_tokenAmount / 2)) * 1e18) /
-            (address(this).balance - (ethAmount / 2));
-    }
+    function quoteSell(uint _tokenAmount) public view returns (uint) {
+        uint256 connectorBalance = address(this).balance;
 
-    function getTradeHistory() public view returns (TradeDetails[] memory) {
-        return trades;
-    }
-
-    function getUserTradeHistory(
-        address user
-    ) public view returns (TradeDetails[] memory) {
-        return userTrades[user];
+        return
+            calculateSaleReturn(
+                balanceOf(address(this)),
+                connectorBalance,
+                connectorWeight,
+                _tokenAmount
+            );
     }
 
     function getTokenDetails() public view returns (TokenDetails memory) {
@@ -247,17 +217,17 @@ contract MoonNinjaToken is Initializable, ERC20Upgradeable, LiquidityManager {
             );
     }
 
-    function initializeLiquidity(address uniswapRouter) external {
+    function initializeLiquidity() external {
         require(msg.sender == developer, "Only dev");
 
         uint tokenBalance = balanceOf(address(this));
         uint ethBalance = address(this).balance;
 
-        _createAndAddLiquidity(
-            uniswapRouter,
-            address(this),
-            tokenBalance,
-            ethBalance
-        );
+        // uint256 lpToken = _createAndAddLiquidity(
+        //     address(this),
+        //     tokenBalance,
+        //     ethBalance,
+        //     3000 // 0.3% fee
+        // );
     }
 }

@@ -1,10 +1,20 @@
 require("@nomicfoundation/hardhat-toolbox");
+require("@nomicfoundation/hardhat-foundry");
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
-  solidity: "0.8.24",
-  optimize: {
-    enabled: true,
-    runs: 200,
+  solidity: {
+    compilers: [
+      {
+        version: `0.8.26`,
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 1500,
+          },
+          evmVersion: `cancun`,
+        },
+      },
+    ],
   },
 };

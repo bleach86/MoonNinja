@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 describe("MoonNinja", function () {
   let moonNinja,
@@ -24,6 +25,14 @@ describe("MoonNinja", function () {
   });
 
   describe("Deployment", function () {
+    it("gives a test account 100k ETH", async () => {
+      const newBalance = ethers.parseEther("100000");
+      await helpers.setBalance(addr1.address, newBalance);
+      const balance = await ethers.provider.getBalance(addr1.address);
+
+      expect(balance).to.equal(newBalance);
+    });
+
     it("Should deploy MoonNinja contract", async function () {
       expect(await moonNinja.getAddress()).to.properAddress;
     });
@@ -78,13 +87,13 @@ describe("MoonNinja", function () {
       feeAddressBalanceStart = await ethers.provider.getBalance(owner.address);
     });
 
-    it("Should have a max supply of 1,000,000 MEME tokens", async function () {
+    it("Should have a max supply of 1,000,000,000 MEME tokens", async function () {
       const totalSupply = await moonNinjaToken.totalSupply();
-      expect(totalSupply).to.equal(ethers.parseUnits("1000000", 18));
+      expect(totalSupply).to.equal(ethers.parseUnits("1000000000", 18));
     });
 
     it("Should allow users to buy tokens", async function () {
-      const ethToSend = ethers.parseUnits("1", "ether");
+      const ethToSend = ethers.parseUnits("6", "ether");
       await moonNinjaToken.connect(addr1).buyTokens({ value: ethToSend });
       const balance = await moonNinjaToken.balanceOf(addr1.address);
       expect(balance).to.be.greaterThan(0);
@@ -114,9 +123,20 @@ describe("MoonNinja", function () {
     });
 
     it("Should allow users to pump", async function () {
-      const ethToSend = ethers.parseUnits("1", "ether");
+      const ethToSend = ethers.parseUnits("6", "ether");
+      let tx;
       for (let i = 0; i < iters; i++) {
-        await moonNinjaToken.connect(addr1).buyTokens({ value: ethToSend });
+        const price = await moonNinjaToken.getCurrentPrice();
+
+        //console.log("Price:", ethers.formatEther(price));
+
+        tx = await moonNinjaToken
+          .connect(addr1)
+          .buyTokens({ value: ethToSend });
+
+        const receipt = await tx.wait();
+
+        //console.log("Gas used:", receipt.gasUsed.toString());
       }
       const balance = await moonNinjaToken.balanceOf(addr1.address);
       expect(balance).to.be.greaterThan(0);
@@ -130,19 +150,16 @@ describe("MoonNinja", function () {
       );
 
       for (let i = 0; i < iters; i++) {
+        let tx;
         await moonNinjaToken
           .connect(addr1)
           .approve(await moonNinjaToken.getAddress(), tokenAmountToSell);
-        await moonNinjaToken.connect(addr1).sellTokens(tokenAmountToSell);
+        tx = await moonNinjaToken.connect(addr1).sellTokens(tokenAmountToSell);
+        const receipt = await tx.wait();
+
+        //console.log("Gas used:", receipt.gasUsed.toString());
       }
       const finalBalance = await moonNinjaToken.balanceOf(addr1.address);
-    });
-
-    it("Should allow users to get trade history", async function () {
-      const tradeHistory = await moonNinjaToken.getUserTradeHistory(
-        addr1.address
-      );
-      expect(tradeHistory.length).to.be.greaterThan(0);
     });
 
     it("Should allow users to get token details", async function () {
@@ -151,19 +168,14 @@ describe("MoonNinja", function () {
       expect(tokenDetails.name).to.equal("MemeToken");
       expect(tokenDetails.symbol).to.equal("MEME");
       expect(tokenDetails.developer).to.equal(owner.address);
-      expect(tokenDetails.maxSupply).to.equal(ethers.parseUnits("1000000", 18));
+      expect(tokenDetails.maxSupply).to.equal(
+        ethers.parseUnits("1000000000", 18)
+      );
       expect(tokenDetails.description).to.equal("A fun token");
       expect(tokenDetails.image).to.equal("ipfs://image");
       expect(tokenDetails.twitter).to.equal("@twitter");
       expect(tokenDetails.telegram).to.equal("@telegram");
       expect(tokenDetails.website).to.equal("https://website.com");
-    });
-
-    it("Should allow users to get platform trade history", async function () {
-      const tradeHistory = await moonNinja.getLast250Trades();
-      const expected = Math.min(iters * 2 + 2, 250);
-
-      expect(tradeHistory.length).to.equal(expected);
     });
 
     it("Should allow users to get platform trade totals", async function () {
