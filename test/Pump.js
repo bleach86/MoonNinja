@@ -12,7 +12,8 @@ describe("MoonNinja", function () {
     addr2,
     moonNinjaToken,
     tokenAddress,
-    WETH;
+    WETH,
+    liquidityManager;
 
   before(async () => {
     [owner, addr1, addr2] = await ethers.getSigners();
@@ -23,13 +24,24 @@ describe("MoonNinja", function () {
     const weth = await WETH_CONTRACT.deploy();
     WETH = weth;
 
+    // deploy Liquidity manager
+
+    const LiquidityManager = await ethers.getContractFactory(
+      "MNLiquidityManager"
+    );
+    liquidityManager = await LiquidityManager.deploy();
+
     // Deploy MoonNinjaToken first
     MoonNinjaToken = await ethers.getContractFactory("MoonNinjaToken");
     moonNinjaToken = await MoonNinjaToken.deploy();
 
     // Now deploy MoonNinja contract and pass the token address
     MoonNinja = await ethers.getContractFactory("MoonNinja");
-    moonNinja = await MoonNinja.deploy(moonNinjaToken.target, WETH.target);
+    moonNinja = await MoonNinja.deploy(
+      moonNinjaToken.target,
+      WETH.target,
+      liquidityManager.target
+    );
   });
 
   describe("Deployment", function () {
@@ -37,9 +49,11 @@ describe("MoonNinja", function () {
       const newBalance = ethers.parseEther("10000000");
       const halfBalance = ethers.parseEther("50000");
       await helpers.setBalance(addr1.address, newBalance);
+      await helpers.setBalance(owner.address, newBalance);
       const balance = await ethers.provider.getBalance(addr1.address);
 
       await WETH.connect(addr1).deposit({ value: halfBalance });
+      await WETH.deposit({ value: halfBalance });
 
       expect(balance).to.equal(newBalance);
       expect(await WETH.balanceOf(addr1.address)).to.equal(halfBalance);
@@ -52,14 +66,35 @@ describe("MoonNinja", function () {
 
   describe("Creating a MoonNinjaToken", function () {
     it("Should create a MoonNinjaToken and show event details", async function () {
+      WETH.approve(moonNinja.target, ethers.parseEther("10"));
+
       const tx = await moonNinja.createToken(
-        "MemeToken",
-        "MEME",
-        "A fun token",
-        "ipfs://image",
-        "@twitter",
-        "@telegram",
-        "https://website.com"
+        {
+          name: "MemeToken",
+          symbol: "MEME",
+          decimals: 18,
+          maxSupply: ethers.parseUnits("1000000000", 18),
+          description: "A fun token",
+          image: "ipfs://image",
+          twitter: "@twitter",
+          telegram: "@telegram",
+          discord: "@discord",
+          website: "https://website.com",
+          developer: owner.address,
+          bondingFeeAddress: owner.address,
+          connectorWeight: 75000,
+          fees: {
+            buyFee: 0,
+            sellFee: 0,
+            transferFee: 10,
+            developerFee: 50,
+            burnFee: 50,
+          },
+          antiWhale: true,
+          maxAntiWhaleAmount: 0,
+          liquidityManagerAddress: liquidityManager.target,
+        },
+        ethers.parseEther("10")
       );
 
       const receipt = await tx.wait();
@@ -99,7 +134,10 @@ describe("MoonNinja", function () {
 
     it("Should have a max supply of 1,000,000,000 MEME tokens", async function () {
       const totalSupply = await moonNinjaToken.totalSupply();
-      expect(totalSupply).to.equal(ethers.parseUnits("1000000000", 18));
+
+      // 947034890836617186079562694n = 1,000,000,000 * 10 ** 18 - amount burned during deployment
+
+      expect(totalSupply).to.equal(947034890836617186079562694n);
     });
 
     it("Should allow users to buy tokens", async function () {
@@ -233,8 +271,8 @@ describe("MoonNinja", function () {
 
     it("Should allow users to get platform trade totals", async function () {
       const tradeTotals = await moonNinja.getTradeTotals();
-      expect(tradeTotals[0]).to.be.eq(iters * 2 + 4);
-      expect(tradeTotals[1]).to.be.eq(iters + 3);
+      expect(tradeTotals[0]).to.be.eq(iters * 2 + 5);
+      expect(tradeTotals[1]).to.be.eq(iters + 4);
       expect(tradeTotals[2]).to.be.eq(iters + 1);
     });
 

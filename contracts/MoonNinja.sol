@@ -12,27 +12,60 @@ pragma solidity ^0.8.24;
 */
 
 import "@openzeppelin/contracts/proxy/Clones.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+
+import "forge-std/console.sol";
+
+struct FeeDetails {
+    uint32 buyFee;
+    uint32 sellFee;
+    uint32 transferFee;
+    uint32 developerFee;
+    uint32 burnFee;
+}
+
+struct TokenInitialization {
+    string name;
+    string symbol;
+    uint8 decimals;
+    uint maxSupply;
+    string description;
+    string image;
+    string twitter;
+    string telegram;
+    string discord;
+    string website;
+    address developer;
+    uint32 connectorWeight;
+    FeeDetails fees;
+    bool antiWhale;
+    uint32 maxAntiWhaleAmount;
+}
 
 // Interface for the token's initialize function
 interface IMoonNinjaToken {
-    function initialize(
-        string memory _name,
-        string memory _symbol,
-        string memory _description,
-        string memory _image,
-        string memory _twitter,
-        string memory _telegram,
-        string memory _website,
-        address _developer
-    ) external;
+    function initialize(TokenInitialization memory _tokenInit) external;
 
-    function initializeStage2(
-        address _bondingFeeAddress,
-        uint32 _connectorWeight
-    ) external;
+    function buyTokens(uint amountWETH) external payable;
+
+    function burn(uint amount) external;
+
+    function balanceOf(address account) external view returns (uint);
 }
 
-contract MoonNinja {
+interface IWETH {
+    function approve(address spender, uint256 amount) external returns (bool);
+
+    function balanceOf(address account) external view returns (uint256);
+
+    function transferFrom(
+        address from,
+        address to,
+        uint256 amount
+    ) external returns (bool);
+}
+
+contract MoonNinja is Ownable {
     // MoonNinja is a factory contract for creating and managing MoonNinja tokens
     // It tracks the deployed tokens, trade history, and provides utility functions
     // for token creation and trading.
@@ -49,6 +82,7 @@ contract MoonNinja {
     address public feeAddress;
     address public tokenLogicAddress;
     address public WETH;
+    address public MNLiquidityManagerAddress;
 
     struct TokenInfo {
         string name;
@@ -84,56 +118,58 @@ contract MoonNinja {
         address developer
     );
 
-    constructor(address _tokenLogicAddress, address _wethAddress) {
+    constructor(
+        address _tokenLogicAddress,
+        address _wethAddress,
+        address _MNLiquidityManagerAddress
+    ) Ownable(msg.sender) {
         feeAddress = msg.sender;
         tokenLogicAddress = _tokenLogicAddress;
         WETH = _wethAddress;
+        MNLiquidityManagerAddress = _MNLiquidityManagerAddress;
     }
 
     function createToken(
-        string memory name,
-        string memory symbol,
-        string memory description,
-        string memory image,
-        string memory twitter,
-        string memory telegram,
-        string memory website
-    ) public {
+        TokenInitialization memory tokenInit,
+        uint _WETHAmount
+    ) public payable {
         // Deploy using OZ Clones (EIP-1167)
         address cloneAddress = Clones.clone(tokenLogicAddress);
 
         // Initialize the clone contract
-        IMoonNinjaToken(cloneAddress).initialize(
-            name,
-            symbol,
-            description,
-            image,
-            twitter,
-            telegram,
-            website,
-            msg.sender
-        );
-
-        // Initialize stage 2
-        IMoonNinjaToken(cloneAddress).initializeStage2(
-            feeAddress,
-            75000 // Default connector weight
-        );
+        IMoonNinjaToken(cloneAddress).initialize(tokenInit);
 
         deployedTokens.push(cloneAddress);
         isDeployedToken[cloneAddress] = true;
 
         emit TokenCreated(
             cloneAddress,
-            name,
-            symbol,
-            description,
-            image,
-            twitter,
-            telegram,
-            website,
+            tokenInit.name,
+            tokenInit.symbol,
+            tokenInit.description,
+            tokenInit.image,
+            tokenInit.twitter,
+            tokenInit.telegram,
+            tokenInit.website,
             msg.sender
         );
+
+        if (msg.value > 0) {
+            IMoonNinjaToken(cloneAddress).buyTokens{value: msg.value}(0);
+        } else {
+            IWETH(WETH).transferFrom(msg.sender, address(this), _WETHAmount);
+
+            IWETH(WETH).approve(cloneAddress, _WETHAmount);
+            IMoonNinjaToken(cloneAddress).buyTokens(_WETHAmount);
+        }
+
+        uint tokenBalance = IMoonNinjaToken(cloneAddress).balanceOf(
+            address(this)
+        );
+
+        if (tokenBalance > 0) {
+            IMoonNinjaToken(cloneAddress).burn(tokenBalance);
+        }
     }
 
     function getDeployedTokens() public view returns (address[] memory) {
@@ -175,5 +211,27 @@ contract MoonNinja {
 
     function getWETH() public view returns (address) {
         return WETH;
+    }
+
+    function getBondingFeeAddress() public view returns (address) {
+        return feeAddress;
+    }
+
+    function getMNLiquidityManagerAddress() public view returns (address) {
+        return MNLiquidityManagerAddress;
+    }
+
+    function setBondingFeeAddress(address _feeAddress) public onlyOwner {
+        feeAddress = _feeAddress;
+    }
+
+    function setTokenLogicAddress(address _tokenLogicAddress) public onlyOwner {
+        tokenLogicAddress = _tokenLogicAddress;
+    }
+
+    function setMNLiquidityManagerAddress(
+        address _MNLiquidityManagerAddress
+    ) public onlyOwner {
+        MNLiquidityManagerAddress = _MNLiquidityManagerAddress;
     }
 }

@@ -13,8 +13,9 @@ pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts/proxy/Clones.sol";
 
-import {MNLiquidityManager} from "./MNLiquidityManager.sol";
+//import {MNLiquidityManager} from "./MNLiquidityManager.sol";
 import {BancorFormula} from "./bonding_curve/BancorFormula.sol";
 
 import "forge-std/console.sol";
@@ -29,6 +30,16 @@ interface IMoonNinja {
     ) external;
 
     function getWETH() external view returns (address);
+
+    function getBondingFeeAddress() external view returns (address);
+
+    function getMNLiquidityManagerAddress() external view returns (address);
+}
+
+interface IMNLiquidityManager {
+    function initialize(address _moonNinjaToken, address _WETH) external;
+
+    function run() external;
 }
 
 interface IWETH9 {
@@ -41,12 +52,52 @@ interface IWETH9 {
     function transferFrom(address, address, uint) external returns (bool);
 
     function transfer(address, uint) external returns (bool);
+
+    function approve(address, uint) external returns (bool);
+}
+
+struct TokenDetails {
+    string name;
+    string symbol;
+    address tokenAddress;
+    address developer;
+    uint maxSupply;
+    string description;
+    string image;
+    string twitter;
+    string telegram;
+    string website;
+}
+
+struct FeeDetails {
+    uint32 buyFee;
+    uint32 sellFee;
+    uint32 transferFee;
+    uint32 developerFee;
+    uint32 burnFee;
+}
+
+struct TokenInitialization {
+    string name;
+    string symbol;
+    uint8 decimals;
+    uint maxSupply;
+    string description;
+    string image;
+    string twitter;
+    string telegram;
+    string discord;
+    string website;
+    address developer;
+    uint32 connectorWeight;
+    FeeDetails fees;
+    bool antiWhale;
+    uint32 maxAntiWhaleAmount;
 }
 
 contract MoonNinjaToken is
     Initializable,
     ERC20PermitUpgradeable,
-    MNLiquidityManager,
     BancorFormula
 {
     string public description;
@@ -55,128 +106,84 @@ contract MoonNinjaToken is
     string public telegram;
     string public website;
     address public developer;
-    uint immutable maxSupply = 1_000_000_000e18;
+
+    address public devFeeReceiver;
+
+    mapping(address => bool) public isAdmin;
+
+    uint public maxSupply = 1_000_000_000e18;
     bool public isTokenGraduated = false;
-    address public constant DEAD_ADDRESS =
+    address public immutable DEAD_ADDRESS =
         0x000000000000000000000000000000000000dEaD;
 
     address public moonNinja;
     address public WETH;
+    address public liquidityManager;
 
     uint public immutable bondingFee = 1;
     address public bondingFeeAddress;
-
     uint32 public connectorWeight;
+    uint8 public constant DECIMALS = 18;
 
     // developer fee options
     // fees can be applied on transfer, buy, and sell
-    // The maximum fee is 10%
 
-    uint32 private constant MAX_FEE = 10; // 10% max fee
-
-    uint32 public buyFee = 0; // 0% buy fee
-    uint32 public sellFee = 0; // 0% sell fee
-    uint32 public transferFee = 10; // 10% transfer fee
+    uint32 public buyFee;
+    uint32 public sellFee;
+    uint32 public transferFee;
 
     // fee split options
     // fees can be split between the developer and burn
     // developerFee + burnFee = 100%
 
-    uint32 public developerFee = 50; // 0% developer fee
-    uint32 public burnFee = 50; // 0% burn fee
-
-    struct TokenDetails {
-        string name;
-        string symbol;
-        address tokenAddress;
-        address developer;
-        uint maxSupply;
-        string description;
-        string image;
-        string twitter;
-        string telegram;
-        string website;
-    }
-
-    struct FeeDetails {
-        uint32 buyFee;
-        uint32 sellFee;
-        uint32 transferFee;
-        uint32 developerFee;
-        uint32 burnFee;
-    }
-
-    struct TokenInitialization {
-        string name;
-        string symbol;
-        uint8 decimals;
-        uint maxSupply;
-        string description;
-        string image;
-        string twitter;
-        string telegram;
-        string discord;
-        string website;
-        address developer;
-        address bondingFeeAddress;
-        uint32 connectorWeight;
-        FeeDetails fees;
-        bool antiWhale;
-        uint32 maxAntiWhaleAmount;
-    }
-
-    bool public initialized = false;
+    uint32 public developerFee;
+    uint32 public burnFee;
 
     event TokensPurchased(address indexed purchaser, uint amount, uint price);
     event TokensSold(address indexed seller, uint amount, uint price);
 
     //event LiquidityAdded(uint tokenAmount, uint ethAmount);
 
-    constructor() MNLiquidityManager() {
+    constructor() {
         // Prevent initialization of the implementation contract itself
         _disableInitializers();
     }
 
     function initialize(
-        string memory _name,
-        string memory _symbol,
-        string memory _description,
-        string memory _image,
-        string memory _twitter,
-        string memory _telegram,
-        string memory _website,
-        address _developer
+        TokenInitialization memory _tokenInit
     ) external initializer {
-        __ERC20_init(_name, _symbol);
+        __ERC20_init(_tokenInit.name, _tokenInit.symbol);
 
-        description = _description;
-        image = _image;
-        twitter = _twitter;
-        telegram = _telegram;
-        website = _website;
-        developer = _developer;
+        description = _tokenInit.description;
+        image = _tokenInit.image;
+        twitter = _tokenInit.twitter;
+        telegram = _tokenInit.telegram;
+        website = _tokenInit.website;
+        developer = _tokenInit.developer;
+        devFeeReceiver = _tokenInit.developer;
+        isAdmin[developer] = true;
+
         moonNinja = msg.sender;
 
-        transferFee = 10; // 10% transfer fee
-        developerFee = 50; // 50% developer fee
-        burnFee = 50; // 50% burn fee
+        transferFee = _tokenInit.fees.transferFee;
+        developerFee = _tokenInit.fees.developerFee;
+        burnFee = _tokenInit.fees.burnFee;
+        buyFee = _tokenInit.fees.buyFee;
+        sellFee = _tokenInit.fees.sellFee;
+        connectorWeight = _tokenInit.connectorWeight;
 
+        maxSupply = _tokenInit.maxSupply;
         WETH = IMoonNinja(moonNinja).getWETH();
 
-        initLM(address(this), WETH);
+        address _liquidityManagerAddress = IMoonNinja(moonNinja)
+            .getMNLiquidityManagerAddress();
+
+        liquidityManager = Clones.clone(_liquidityManagerAddress);
+        IMNLiquidityManager(liquidityManager).initialize(address(this), WETH);
+
+        bondingFeeAddress = IMoonNinja(moonNinja).getBondingFeeAddress();
 
         _mint(address(this), maxSupply);
-    }
-
-    function initializeStage2(
-        address _bondingFeeAddress,
-        uint32 _connectorWeight
-    ) external {
-        require(!initialized, "Already initialized");
-        initialized = true;
-
-        bondingFeeAddress = _bondingFeeAddress;
-        connectorWeight = _connectorWeight;
     }
 
     receive() external payable {
@@ -208,7 +215,7 @@ contract MoonNinjaToken is
 
             // transfer the fee to the developer
             if (developerFeeAmount > 0) {
-                _transfer(msg.sender, developer, developerFeeAmount);
+                _transfer(msg.sender, devFeeReceiver, developerFeeAmount);
             }
             // burn the fee
             if (burnFeeAmount > 0) {
@@ -293,7 +300,7 @@ contract MoonNinjaToken is
     function getCurrentPrice() public view returns (uint tokensPerETH) {
         uint ethAmount = 1 ether;
         uint tokenAmount = quoteBuy(ethAmount);
-        return (tokenAmount * 1e18) / ethAmount;
+        return (tokenAmount * (10 ** uint(DECIMALS))) / ethAmount;
     }
 
     function quoteBuy(uint _ethAmount) public view returns (uint) {
@@ -337,12 +344,14 @@ contract MoonNinjaToken is
     }
 
     function initializeLiquidity() external {
-        require(msg.sender == developer, "Only dev");
+        require(isAdmin[msg.sender], "Only admins can initialize liquidity");
 
-        uint tokenBalance = balanceOf(address(this));
-        uint ethBalance = address(this).balance;
+        // make approvals
 
-        run();
+        IWETH9(WETH).approve(liquidityManager, type(uint256).max);
+        _approve(address(this), liquidityManager, type(uint256).max);
+
+        IMNLiquidityManager(liquidityManager).run();
 
         // uint256 lpToken = _createAndAddLiquidity(
         //     address(this),
@@ -350,5 +359,42 @@ contract MoonNinjaToken is
         //     ethBalance,
         //     3000 // 0.3% fee
         // );
+    }
+
+    function decimals() public pure override returns (uint8) {
+        return DECIMALS;
+    }
+
+    function addAdmin(address _admin) external {
+        require(msg.sender == developer, "Only developer can set admin");
+        require(_admin != address(0), "Invalid address");
+        require(!isAdmin[_admin], "Already an admin");
+
+        isAdmin[_admin] = true;
+    }
+
+    function removeAdmin(address _admin) external {
+        require(msg.sender == developer, "Only developer can remove admin");
+        require(_admin != address(0), "Invalid address");
+        require(isAdmin[_admin], "Not an admin");
+
+        isAdmin[_admin] = false;
+    }
+
+    function setDevFeeReceiver(address _devFeeReceiver) external {
+        require(isAdmin[msg.sender], "Only admins can set dev fee receiver");
+        require(_devFeeReceiver != address(0), "Invalid address");
+
+        devFeeReceiver = _devFeeReceiver;
+    }
+
+    function burn(uint256 amount) external {
+        require(amount > 0, "Burn amount must be greater than zero");
+        require(
+            balanceOf(address(msg.sender)) >= amount,
+            "Insufficient balance to burn"
+        );
+
+        _burn(address(this), amount);
     }
 }

@@ -8,15 +8,16 @@ import {CurrencyLibrary, Currency} from "@uniswap/v4-core/src/types/Currency.sol
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+
+import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 
 import {Constants} from "./base/Constants.sol";
 import {Config} from "./base/Config.sol";
 
 import "forge-std/console.sol";
 
-contract MNLiquidityManager is Script, Constants, Config {
+contract MNLiquidityManager is Script, Constants, Config, Initializable {
     using CurrencyLibrary for Currency;
 
     /////////////////////////////////////
@@ -41,17 +42,34 @@ contract MNLiquidityManager is Script, Constants, Config {
 
     /////////////////////////////////////
 
-    function initLM(address _moonNinjaToken, address _WETH) internal {
-        Config.setConfig(_moonNinjaToken, _WETH);
+    constructor() {
+        _disableInitializers();
     }
 
-    function run() internal {
+    function initialize(
+        address _moonNinjaToken,
+        address _WETH
+    ) external initializer {
+        Config.setConfig(_moonNinjaToken, _WETH);
+
+        lpFee = 3000; // 0.30%
+        tickSpacing = 60;
+        tickLower = -600; // must be a multiple of tickSpacing
+        tickUpper = 600;
+    }
+
+    function run() external {
+        require(msg.sender == address(token0));
         // tokens should be sorted
 
-        token0Amount = IERC20(address(this)).balanceOf(address(this));
-        token1Amount = IERC20(address(token1)).balanceOf(address(this));
+        token0Amount = token0.balanceOf(address(token0));
+        token1Amount = token1.balanceOf(address(token0));
 
         startingPrice = getStartingPrice(token0Amount, token1Amount);
+
+        // transfer tokens to the contract
+        token0.transferFrom(address(token0), address(this), token0Amount);
+        token1.transferFrom(address(token0), address(this), token1Amount);
 
         PoolKey memory pool = PoolKey({
             currency0: currency0,
@@ -111,6 +129,8 @@ contract MNLiquidityManager is Script, Constants, Config {
 
         // if the pool is an ETH pair, native tokens are to be transferred
         uint256 valueToPass = currency0.isAddressZero() ? amount0Max : 0;
+
+        return;
 
         vm.startBroadcast();
         tokenApprovals();
