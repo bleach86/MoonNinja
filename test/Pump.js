@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
+const fs = require("fs");
 
 describe("MoonNinja", function () {
   let moonNinja,
@@ -10,10 +11,17 @@ describe("MoonNinja", function () {
     addr1,
     addr2,
     moonNinjaToken,
-    tokenAddress;
+    tokenAddress,
+    WETH;
 
   before(async () => {
     [owner, addr1, addr2] = await ethers.getSigners();
+
+    // Deploy WETH contract
+
+    const WETH_CONTRACT = await ethers.getContractFactory("WETH9");
+    const weth = await WETH_CONTRACT.deploy();
+    WETH = weth;
 
     // Deploy MoonNinjaToken first
     MoonNinjaToken = await ethers.getContractFactory("MoonNinjaToken");
@@ -21,16 +29,20 @@ describe("MoonNinja", function () {
 
     // Now deploy MoonNinja contract and pass the token address
     MoonNinja = await ethers.getContractFactory("MoonNinja");
-    moonNinja = await MoonNinja.deploy(moonNinjaToken.target);
+    moonNinja = await MoonNinja.deploy(moonNinjaToken.target, WETH.target);
   });
 
   describe("Deployment", function () {
     it("gives a test account 100k ETH", async () => {
-      const newBalance = ethers.parseEther("100000");
+      const newBalance = ethers.parseEther("10000000");
+      const halfBalance = ethers.parseEther("50000");
       await helpers.setBalance(addr1.address, newBalance);
       const balance = await ethers.provider.getBalance(addr1.address);
 
+      await WETH.connect(addr1).deposit({ value: halfBalance });
+
       expect(balance).to.equal(newBalance);
+      expect(await WETH.balanceOf(addr1.address)).to.equal(halfBalance);
     });
 
     it("Should deploy MoonNinja contract", async function () {
@@ -77,14 +89,12 @@ describe("MoonNinja", function () {
   describe("MoonNinjaToken Interaction", function () {
     let moonNinjaToken;
     let iters = 125;
-    let feeAddressBalanceStart;
 
     before(async () => {
       moonNinjaToken = await ethers.getContractAt(
         "MoonNinjaToken",
         tokenAddress
       );
-      feeAddressBalanceStart = await ethers.provider.getBalance(owner.address);
     });
 
     it("Should have a max supply of 1,000,000,000 MEME tokens", async function () {
@@ -93,26 +103,68 @@ describe("MoonNinja", function () {
     });
 
     it("Should allow users to buy tokens", async function () {
-      const ethToSend = ethers.parseUnits("6", "ether");
-      await moonNinjaToken.connect(addr1).buyTokens({ value: ethToSend });
+      // Generate a random number between 0.5 and 350
+      const randomEth = 0.5 + Math.random() * (350 - 0.5);
+      const ethToSend = ethers.parseUnits(randomEth.toFixed(6), "ether");
+
+      //console.log(`Sending ${randomEth.toFixed(6)} ETH to buy tokens`);
+
+      await moonNinjaToken.connect(addr1).buyTokens(0, { value: ethToSend });
+
       const balance = await moonNinjaToken.balanceOf(addr1.address);
-      expect(balance).to.be.greaterThan(0);
+      //console.log("The balance is", ethers.formatEther(balance));
+      expect(balance).to.be.greaterThan(0n);
     });
 
     it("Should allow users to sell tokens", async function () {
       const tokenAmountToSell = await moonNinjaToken.balanceOf(addr1.address);
-      await moonNinjaToken
-        .connect(addr1)
-        .approve(await moonNinjaToken.getAddress(), tokenAmountToSell);
+      // await moonNinjaToken
+      //   .connect(addr1)
+      //   .approve(await moonNinjaToken.getAddress(), tokenAmountToSell);
       const initialEthBalance = await ethers.provider.getBalance(addr1.address);
       await moonNinjaToken.connect(addr1).sellTokens(tokenAmountToSell);
       const finalEthBalance = await ethers.provider.getBalance(addr1.address);
       expect(finalEthBalance).to.be.gt(initialEthBalance);
+      const tokenBalance = await moonNinjaToken.balanceOf(addr1.address);
+      expect(tokenBalance).to.equal(0);
+    });
+
+    it("Should allow users to buy tokens with WETH", async function () {
+      // Generate a random number between 0.5 and 350
+      const randomEth = 0.5 + Math.random() * (350 - 0.5);
+      const ethToSend = ethers.parseUnits(randomEth.toFixed(6), "ether");
+
+      //console.log(`Sending ${randomEth.toFixed(6)} ETH to buy tokens`);
+
+      await WETH.connect(addr1).approve(moonNinjaToken.target, ethToSend);
+      await moonNinjaToken.connect(addr1).buyTokens(ethToSend);
+
+      const balance = await moonNinjaToken.balanceOf(addr1.address);
+      //console.log("The balance is", ethers.formatEther(balance));
+      expect(balance).to.be.greaterThan(0n);
+    });
+
+    it("Should allow users to buy with direct ETH transfer", async function () {
+      // Generate a random number between 0.5 and 350
+      const randomEth = 0.5 + Math.random() * (350 - 0.5);
+      const ethToSend = ethers.parseUnits(randomEth.toFixed(6), "ether");
+
+      const initialEthBalance = await moonNinjaToken.balanceOf(addr1.address);
+
+      //console.log(`Sending ${randomEth.toFixed(6)} ETH to buy tokens`);
+      await addr1.sendTransaction({
+        to: moonNinjaToken.target,
+        value: ethToSend,
+      });
+
+      const balance = await moonNinjaToken.balanceOf(addr1.address);
+      //console.log("The balance is", ethers.formatEther(balance));
+      expect(balance).to.be.greaterThan(initialEthBalance);
     });
 
     it("Should not allow buying with less than 1 wei", async function () {
       await expect(
-        moonNinjaToken.connect(addr2).buyTokens({ value: 1 })
+        moonNinjaToken.connect(addr2).buyTokens(0, { value: 1 })
       ).to.be.revertedWith("send some ETH");
     });
 
@@ -123,16 +175,17 @@ describe("MoonNinja", function () {
     });
 
     it("Should allow users to pump", async function () {
-      const ethToSend = ethers.parseUnits("6", "ether");
       let tx;
       for (let i = 0; i < iters; i++) {
         const price = await moonNinjaToken.getCurrentPrice();
+        const randomEth = 0.5 + Math.random() * (350 - 0.5);
+        const ethToSend = ethers.parseUnits(randomEth.toFixed(6), "ether");
 
         //console.log("Price:", ethers.formatEther(price));
 
         tx = await moonNinjaToken
           .connect(addr1)
-          .buyTokens({ value: ethToSend });
+          .buyTokens(0, { value: ethToSend });
 
         const receipt = await tx.wait();
 
@@ -151,9 +204,9 @@ describe("MoonNinja", function () {
 
       for (let i = 0; i < iters; i++) {
         let tx;
-        await moonNinjaToken
-          .connect(addr1)
-          .approve(await moonNinjaToken.getAddress(), tokenAmountToSell);
+        // await moonNinjaToken
+        //   .connect(addr1)
+        //   .approve(await moonNinjaToken.getAddress(), tokenAmountToSell);
         tx = await moonNinjaToken.connect(addr1).sellTokens(tokenAmountToSell);
         const receipt = await tx.wait();
 
@@ -180,8 +233,8 @@ describe("MoonNinja", function () {
 
     it("Should allow users to get platform trade totals", async function () {
       const tradeTotals = await moonNinja.getTradeTotals();
-      expect(tradeTotals[0]).to.be.eq(iters * 2 + 2);
-      expect(tradeTotals[1]).to.be.eq(iters + 1);
+      expect(tradeTotals[0]).to.be.eq(iters * 2 + 4);
+      expect(tradeTotals[1]).to.be.eq(iters + 3);
       expect(tradeTotals[2]).to.be.eq(iters + 1);
     });
 
@@ -192,12 +245,76 @@ describe("MoonNinja", function () {
     });
 
     it("Should collect fees correctly", async function () {
-      const feeAddressBalanceEnd = await ethers.provider.getBalance(
-        owner.address
+      const balacne = await WETH.balanceOf(owner.address);
+      expect(balacne).to.be.greaterThan(0);
+    });
+
+    it("Should simulate market activity randomly buying and selling", async function () {
+      const tradeFile = fs.readFileSync("sim_trades.json", "utf8");
+      const trades = JSON.parse(tradeFile);
+      const prices = [];
+      const ethUSDPrice = 145;
+
+      for (let i = 0; i < trades.length; i++) {
+        const price = await moonNinjaToken.getCurrentPrice();
+        const priceFormatted = Number(ethers.formatEther(price));
+        const usdPerToken = ethUSDPrice / priceFormatted;
+        prices.push(usdPerToken);
+        const trade = trades[i];
+        if (trade.type === "buy") {
+          const amountToBuy = trade.SOL * 500;
+          const amountToBuyInEth = ethers.parseUnits(
+            `${parseInt(amountToBuy)}`,
+            "ether"
+          );
+
+          await moonNinjaToken
+            .connect(addr1)
+            .buyTokens(0, { value: amountToBuyInEth });
+        } else if (trade.type === "sell") {
+          const randomAmountToSell = Math.floor(
+            Math.random() *
+              parseInt(await moonNinjaToken.balanceOf(addr1.address))
+          );
+
+          const tokenAmountToSell = ethers.parseUnits(
+            `${parseInt(randomAmountToSell)}`,
+            "ether"
+          );
+
+          await moonNinjaToken.connect(addr1).sellTokens(tokenAmountToSell);
+        }
+
+        const balance = await moonNinjaToken.balanceOf(addr1.address);
+        expect(balance).to.be.greaterThan(0n);
+      }
+
+      // Save prices
+      fs.writeFileSync("prices.json", JSON.stringify(prices, null, 2));
+    });
+
+    it("Should collect transfer fees correctly", async function () {
+      const totalSupply = await moonNinjaToken.totalSupply();
+      const dev = await moonNinjaToken.developer();
+      const initialDevBalance = await moonNinjaToken.balanceOf(dev);
+
+      const tx = await moonNinjaToken
+        .connect(addr1)
+        .transfer(addr2, ethers.parseUnits("1", 18));
+
+      const addr2Balance = await moonNinjaToken.balanceOf(addr2.address);
+      const newTotalSupply = await moonNinjaToken.totalSupply();
+      const newDevBalance = await moonNinjaToken.balanceOf(dev);
+
+      expect(addr2Balance).to.equal(ethers.parseUnits("0.9", 18));
+      expect(newDevBalance).to.equal(ethers.parseUnits("0.05", 18));
+      expect(newTotalSupply).to.equal(
+        totalSupply - ethers.parseUnits("0.05", 18)
       );
-      const feeAddressBalanceDiff =
-        feeAddressBalanceEnd - feeAddressBalanceStart;
-      expect(feeAddressBalanceDiff).to.be.gt(0);
+    });
+
+    it("Should init liquidity pool", async function () {
+      await moonNinjaToken.initializeLiquidity();
     });
   });
 });

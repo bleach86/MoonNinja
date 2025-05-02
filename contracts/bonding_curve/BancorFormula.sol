@@ -215,9 +215,7 @@ import "./Math/Power.sol";
  * and to You under the Apache License, Version 2.0. "
  */
 contract BancorFormula is Power {
-    //using SafeMath for uint256;
-    //string public version = "0.3";
-    uint32 private constant MAX_WEIGHT = 1000000;
+    uint32 private constant MAX_WEIGHT = 1_000_000;
 
     /**
      * @dev given a token supply, connector balance, weight and a deposit amount (in the connector token),
@@ -254,7 +252,6 @@ contract BancorFormula is Power {
         // special case if the weight = 100%
         if (_connectorWeight == MAX_WEIGHT) {
             return (_supply * _depositAmount) / _connectorBalance;
-            //return _supply.mul(_depositAmount).div(_connectorBalance);
         }
         uint256 result;
         uint8 precision;
@@ -309,7 +306,6 @@ contract BancorFormula is Power {
         // special case if the weight = 100%
         if (_connectorWeight == MAX_WEIGHT) {
             return (_connectorBalance * _sellAmount) / _supply;
-            //return _connectorBalance.mul(_sellAmount).div(_supply);
         }
 
         uint256 result;
@@ -325,6 +321,5 @@ contract BancorFormula is Power {
         uint256 oldBalance = _connectorBalance * result;
         uint256 newBalance = _connectorBalance << precision;
         return (oldBalance - newBalance) / result;
-        //return oldBalance.sub(newBalance).div(result);
     }
 }

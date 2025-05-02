@@ -9,9 +9,12 @@ import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {Constants} from "./base/Constants.sol";
 import {Config} from "./base/Config.sol";
+
+import "forge-std/console.sol";
 
 contract MNLiquidityManager is Script, Constants, Config {
     using CurrencyLibrary for Currency;
@@ -38,8 +41,18 @@ contract MNLiquidityManager is Script, Constants, Config {
 
     /////////////////////////////////////
 
-    function run() external {
+    function initLM(address _moonNinjaToken, address _WETH) internal {
+        Config.setConfig(_moonNinjaToken, _WETH);
+    }
+
+    function run() internal {
         // tokens should be sorted
+
+        token0Amount = IERC20(address(this)).balanceOf(address(this));
+        token1Amount = IERC20(address(token1)).balanceOf(address(this));
+
+        startingPrice = getStartingPrice(token0Amount, token1Amount);
+
         PoolKey memory pool = PoolKey({
             currency0: currency0,
             currency1: currency1,
@@ -106,6 +119,16 @@ contract MNLiquidityManager is Script, Constants, Config {
         // multicall to atomically create pool & add liquidity
         vm.broadcast();
         posm.multicall{value: valueToPass}(params);
+    }
+
+    function getStartingPrice(
+        uint256 balance0,
+        uint256 balance1
+    ) public pure returns (uint160 sqrtPriceX96) {
+        uint256 price = balance0 / balance1;
+        uint256 sqrtPrice = Math.sqrt(price) * (2 ** 96);
+
+        sqrtPriceX96 = uint160(sqrtPrice);
     }
 
     /// @dev helper function for encoding mint liquidity operation

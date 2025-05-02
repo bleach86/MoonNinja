@@ -23,9 +23,12 @@ interface IMoonNinjaToken {
         string memory _twitter,
         string memory _telegram,
         string memory _website,
-        address _developer,
-        address _moonNinjaAddress,
-        address _bondingFeeAddress
+        address _developer
+    ) external;
+
+    function initializeStage2(
+        address _bondingFeeAddress,
+        uint32 _connectorWeight
     ) external;
 }
 
@@ -45,6 +48,18 @@ contract MoonNinja {
 
     address public feeAddress;
     address public tokenLogicAddress;
+    address public WETH;
+
+    struct TokenInfo {
+        string name;
+        string symbol;
+        string description;
+        string image;
+        string twitter;
+        string telegram;
+        string website;
+        address developer;
+    }
 
     // Events
 
@@ -69,9 +84,10 @@ contract MoonNinja {
         address developer
     );
 
-    constructor(address _tokenLogicAddress) {
+    constructor(address _tokenLogicAddress, address _wethAddress) {
         feeAddress = msg.sender;
         tokenLogicAddress = _tokenLogicAddress;
+        WETH = _wethAddress;
     }
 
     function createToken(
@@ -95,9 +111,13 @@ contract MoonNinja {
             twitter,
             telegram,
             website,
-            msg.sender,
-            address(this),
-            feeAddress
+            msg.sender
+        );
+
+        // Initialize stage 2
+        IMoonNinjaToken(cloneAddress).initializeStage2(
+            feeAddress,
+            75000 // Default connector weight
         );
 
         deployedTokens.push(cloneAddress);
@@ -118,10 +138,6 @@ contract MoonNinja {
 
     function getDeployedTokens() public view returns (address[] memory) {
         return deployedTokens;
-    }
-
-    function isNinjaToken(address tokenAddress) public view returns (bool) {
-        return isDeployedToken[tokenAddress];
     }
 
     function tradeEvent(
@@ -155,5 +171,9 @@ contract MoonNinja {
 
     function getTradeTotals() public view returns (uint, uint, uint) {
         return (totalTrades, totalBuyTrades, totalSellTrades);
+    }
+
+    function getWETH() public view returns (address) {
+        return WETH;
     }
 }
