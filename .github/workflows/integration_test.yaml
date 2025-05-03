@@ -19,7 +19,7 @@ jobs:
         run: |
           forge install
           npm install
-          npx hardhat install
+          npm install -g npx
 
       - name: Integration test
         uses: ambersun1234/hardhat-test-action@v1
