@@ -13,11 +13,7 @@ jobs:
         uses: actions/setup-node@v3
 
       - name: Install Foundry
-        run: |
-          curl -L https://foundry.paradigm.xyz | bash
-          echo "$HOME/.foundry/bin" >> $GITHUB_PATH
-          source /home/runner/.bashrc
-          foundryup
+        uses: foundry-rs/foundry-toolchain@v1
 
       - name: Integration test
         uses: ambersun1234/hardhat-test-action@v1
