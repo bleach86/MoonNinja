@@ -15,6 +15,12 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
 
+      - name: Install dependencies
+        run: |
+          forge init
+          npm install
+          npx hardhat install
+
       - name: Integration test
         uses: ambersun1234/hardhat-test-action@v1
         with:
