@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
-import {IAllowanceTransfer} from "./IAllowanceTransfer.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 /// @notice Shared constants used in scripts
 contract Constants {

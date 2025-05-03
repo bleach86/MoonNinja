@@ -15,7 +15,6 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUp
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
 
-//import {MNLiquidityManager} from "./MNLiquidityManager.sol";
 import {BancorFormula} from "./bonding_curve/BancorFormula.sol";
 
 import "forge-std/console.sol";
@@ -39,7 +38,7 @@ interface IMoonNinja {
 interface IMNLiquidityManager {
     function initialize(address _moonNinjaToken, address _WETH) external;
 
-    function run() external;
+    function initLiquidity() external;
 }
 
 interface IWETH9 {
@@ -123,7 +122,7 @@ contract MoonNinjaToken is
     uint public immutable bondingFee = 1;
     address public bondingFeeAddress;
     uint32 public connectorWeight;
-    uint8 public constant DECIMALS = 18;
+    uint8 public DECIMALS = 18;
 
     // developer fee options
     // fees can be applied on transfer, buy, and sell
@@ -154,6 +153,7 @@ contract MoonNinjaToken is
     ) external initializer {
         __ERC20_init(_tokenInit.name, _tokenInit.symbol);
 
+        DECIMALS = _tokenInit.decimals;
         description = _tokenInit.description;
         image = _tokenInit.image;
         twitter = _tokenInit.twitter;
@@ -162,7 +162,6 @@ contract MoonNinjaToken is
         developer = _tokenInit.developer;
         devFeeReceiver = _tokenInit.developer;
         isAdmin[developer] = true;
-
         moonNinja = msg.sender;
 
         transferFee = _tokenInit.fees.transferFee;
@@ -226,8 +225,12 @@ contract MoonNinjaToken is
         // apply apply transfer fee if applicable
         uint256 netAmount = amount - fee;
 
-        // transfer the tokens
-        _transfer(msg.sender, to, netAmount);
+        // transfer the tokens or burn them if the recipient is the dead address
+        if (to == DEAD_ADDRESS) {
+            _burn(msg.sender, netAmount);
+        } else {
+            _transfer(msg.sender, to, netAmount);
+        }
 
         return true;
     }
@@ -249,7 +252,8 @@ contract MoonNinjaToken is
         (fee, netAmount) = applyBondingFee(ethAmount);
 
         uint tokenAmount = quoteBuy(netAmount);
-        uint currentTokensPerETH = (tokenAmount * 1e18) / netAmount;
+        uint currentTokensPerETH = (tokenAmount * (10 ** uint(DECIMALS))) /
+            netAmount;
 
         require(balanceOf(address(this)) > tokenAmount, "sold out");
 
@@ -270,7 +274,8 @@ contract MoonNinjaToken is
         require(balanceOf(msg.sender) >= _tokenAmount, "too poor");
 
         uint ethAmountReceived = quoteSell(_tokenAmount);
-        uint currentTokensPerETH = (_tokenAmount * 1e18) / ethAmountReceived;
+        uint currentTokensPerETH = (_tokenAmount * (10 ** uint(DECIMALS))) /
+            ethAmountReceived;
 
         require(
             IWETH9(WETH).balanceOf(address(this)) >= ethAmountReceived,
@@ -351,17 +356,10 @@ contract MoonNinjaToken is
         IWETH9(WETH).approve(liquidityManager, type(uint256).max);
         _approve(address(this), liquidityManager, type(uint256).max);
 
-        IMNLiquidityManager(liquidityManager).run();
-
-        // uint256 lpToken = _createAndAddLiquidity(
-        //     address(this),
-        //     tokenBalance,
-        //     ethBalance,
-        //     3000 // 0.3% fee
-        // );
+        IMNLiquidityManager(liquidityManager).initLiquidity();
     }
 
-    function decimals() public pure override returns (uint8) {
+    function decimals() public view override returns (uint8) {
         return DECIMALS;
     }
 

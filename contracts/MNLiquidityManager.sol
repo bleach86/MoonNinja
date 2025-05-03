@@ -1,6 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+/*  __  __                   _   _ _       _       
+   |  \/  |                 | \ | (_)     (_)      
+   | \  / | ___   ___  _ __ |  \| |_ _ __  _  __ _ 
+   | |\/| |/ _ \ / _ \| '_ \| . ` | | '_ \| |/ _` |
+   | |  | | (_) | (_) | | | | |\  | | | | | | (_| |
+   |_|  |_|\___/ \___/|_| |_|_| \_|_|_| |_| |\__,_|
+                                         _/ |      
+                                        |__/   
+*/
+
 import "forge-std/Script.sol";
 import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -14,8 +24,6 @@ import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.s
 
 import {Constants} from "./base/Constants.sol";
 import {Config} from "./base/Config.sol";
-
-import "forge-std/console.sol";
 
 contract MNLiquidityManager is Script, Constants, Config, Initializable {
     using CurrencyLibrary for Currency;
@@ -58,8 +66,8 @@ contract MNLiquidityManager is Script, Constants, Config, Initializable {
         tickUpper = 600;
     }
 
-    function run() external {
-        require(msg.sender == address(token0));
+    function initLiquidity() external {
+        require(msg.sender == address(token0), "Must be called by token0");
         // tokens should be sorted
 
         token0Amount = token0.balanceOf(address(token0));

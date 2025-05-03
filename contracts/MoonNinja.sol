@@ -156,7 +156,7 @@ contract MoonNinja is Ownable {
 
         if (msg.value > 0) {
             IMoonNinjaToken(cloneAddress).buyTokens{value: msg.value}(0);
-        } else {
+        } else if (_WETHAmount > 0) {
             IWETH(WETH).transferFrom(msg.sender, address(this), _WETHAmount);
 
             IWETH(WETH).approve(cloneAddress, _WETHAmount);

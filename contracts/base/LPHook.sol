@@ -1,6 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+/*  __  __                   _   _ _       _       
+   |  \/  |                 | \ | (_)     (_)      
+   | \  / | ___   ___  _ __ |  \| |_ _ __  _  __ _ 
+   | |\/| |/ _ \ / _ \| '_ \| . ` | | '_ \| |/ _` |
+   | |  | | (_) | (_) | | | | |\  | | | | | | (_| |
+   |_|  |_|\___/ \___/|_| |_|_| \_|_|_| |_| |\__,_|
+                                         _/ |      
+                                        |__/   
+*/
+
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
 
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
