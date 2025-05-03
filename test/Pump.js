@@ -86,7 +86,7 @@ describe("MoonNinja", function () {
           website: "https://website.com",
           developer: owner.address,
           bondingFeeAddress: owner.address,
-          connectorWeight: 75000,
+          connectorWeight: 200000,
           fees: {
             buyFee: 0,
             sellFee: 0,
@@ -286,13 +286,14 @@ describe("MoonNinja", function () {
       const tradeFile = fs.readFileSync("sim_trades.json", "utf8");
       const trades = JSON.parse(tradeFile);
       const prices = [];
-      const ethUSDPrice = 145;
+      const ethUSDPrice = 0.25;
 
       for (let i = 0; i < trades.length; i++) {
         const price = await moonNinjaToken.getCurrentPrice();
-        const priceFormatted = Number(ethers.formatEther(price));
+        const priceFormatted = ethers.formatUnits(price, decimals);
         const usdPerToken = ethUSDPrice / priceFormatted;
         prices.push(usdPerToken);
+
         const trade = trades[i];
         if (trade.type === "buy") {
           const amountToBuy = trade.SOL * 500;
@@ -322,6 +323,22 @@ describe("MoonNinja", function () {
 
       // Save prices
       fs.writeFileSync("prices.json", JSON.stringify(prices, null, 2));
+      const contractBalance = await moonNinjaToken.balanceOf(
+        moonNinjaToken.target
+      );
+      console.log(
+        "Contract balance",
+        ethers.formatUnits(contractBalance, decimals)
+      );
+      const contractWETHBalance = await WETH.balanceOf(moonNinjaToken.target);
+      console.log(
+        "Contract WETH balance",
+        ethers.formatEther(contractWETHBalance)
+      );
+      var totalSupply = await moonNinjaToken.totalSupply();
+      totalSupply = ethers.formatUnits(totalSupply, decimals);
+      const marketCap = totalSupply * prices[prices.length - 1];
+      console.log("Market cap", marketCap);
     });
 
     it("Should collect transfer fees correctly", async function () {

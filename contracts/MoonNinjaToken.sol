@@ -112,17 +112,18 @@ contract MoonNinjaToken is
 
     uint public maxSupply = 1_000_000_000e18;
     bool public isTokenGraduated = false;
-    address public immutable DEAD_ADDRESS =
+    address private constant DEAD_ADDRESS =
         0x000000000000000000000000000000000000dEaD;
 
-    address public moonNinja;
-    address public WETH;
-    address public liquidityManager;
+    address private moonNinja;
+    address private WETH;
+    address private liquidityManager;
 
-    uint public immutable bondingFee = 1;
+    uint private immutable bondingFee = 1;
     address public bondingFeeAddress;
     uint32 public connectorWeight;
     uint8 public DECIMALS = 18;
+    uint8 private constant DECIMALS_BASE = 18;
 
     // developer fee options
     // fees can be applied on transfer, buy, and sell
@@ -252,13 +253,13 @@ contract MoonNinjaToken is
         (fee, netAmount) = applyBondingFee(ethAmount);
 
         uint tokenAmount = quoteBuy(netAmount);
-        uint currentTokensPerETH = (tokenAmount * (10 ** uint(DECIMALS))) /
-            netAmount;
 
         require(balanceOf(address(this)) > tokenAmount, "sold out");
 
         _transfer(address(this), msg.sender, tokenAmount);
         IWETH9(WETH).transfer(bondingFeeAddress, fee);
+
+        uint currentTokensPerETH = getCurrentPrice();
 
         emit TokensPurchased(msg.sender, tokenAmount, currentTokensPerETH);
 
@@ -274,8 +275,6 @@ contract MoonNinjaToken is
         require(balanceOf(msg.sender) >= _tokenAmount, "too poor");
 
         uint ethAmountReceived = quoteSell(_tokenAmount);
-        uint currentTokensPerETH = (_tokenAmount * (10 ** uint(DECIMALS))) /
-            ethAmountReceived;
 
         require(
             IWETH9(WETH).balanceOf(address(this)) >= ethAmountReceived,
@@ -292,6 +291,8 @@ contract MoonNinjaToken is
 
         payable(msg.sender).transfer(netAmount);
 
+        uint currentTokensPerETH = getCurrentPrice();
+
         emit TokensSold(msg.sender, _tokenAmount, currentTokensPerETH);
 
         IMoonNinja(moonNinja).tradeEvent(
@@ -304,31 +305,60 @@ contract MoonNinjaToken is
 
     function getCurrentPrice() public view returns (uint tokensPerETH) {
         uint ethAmount = 1 ether;
-        uint tokenAmount = quoteBuy(ethAmount);
-        return (tokenAmount * (10 ** uint(DECIMALS))) / ethAmount;
+
+        return quoteBuy(ethAmount);
+    }
+
+    function normalizeAmount(
+        uint256 amount
+    ) internal view returns (uint256 normalizedAmount) {
+        if (DECIMALS == DECIMALS_BASE) {
+            return amount;
+        } else if (DECIMALS > DECIMALS_BASE) {
+            return amount / (10 ** (DECIMALS - DECIMALS_BASE));
+        } else if (DECIMALS < DECIMALS_BASE) {
+            return amount * (10 ** (DECIMALS_BASE - DECIMALS));
+        }
+    }
+
+    function deNormalizeAmount(
+        uint256 amount
+    ) internal view returns (uint256 denormalizedAmount) {
+        if (DECIMALS == DECIMALS_BASE) {
+            return amount;
+        } else if (DECIMALS > DECIMALS_BASE) {
+            return amount * (10 ** (DECIMALS - DECIMALS_BASE));
+        } else if (DECIMALS < DECIMALS_BASE) {
+            return amount / (10 ** (DECIMALS_BASE - DECIMALS));
+        }
     }
 
     function quoteBuy(uint _ethAmount) public view returns (uint) {
         uint256 connectorBalance = IWETH9(WETH).balanceOf(address(this));
+        uint256 tokenSupply = normalizeAmount(balanceOf(address(this)));
 
         return
-            calculatePurchaseReturn(
-                balanceOf(address(this)),
-                connectorBalance,
-                connectorWeight,
-                _ethAmount
+            deNormalizeAmount(
+                calculatePurchaseReturn(
+                    tokenSupply,
+                    connectorBalance,
+                    connectorWeight,
+                    _ethAmount
+                )
             );
     }
 
     function quoteSell(uint _tokenAmount) public view returns (uint) {
         uint256 connectorBalance = IWETH9(WETH).balanceOf(address(this));
+        uint256 tokenAmount = normalizeAmount(_tokenAmount);
+        uint256 tokenSupply = normalizeAmount(balanceOf(address(this)));
 
         return
             calculateSaleReturn(
-                balanceOf(address(this)),
+                tokenSupply,
                 connectorBalance,
                 connectorWeight,
-                _tokenAmount
+                tokenAmount
             );
     }
 

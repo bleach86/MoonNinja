@@ -43,9 +43,9 @@ contract SwapHook is BaseHook {
             Hooks.Permissions({
                 beforeInitialize: false,
                 afterInitialize: false,
-                beforeAddLiquidity: true,
+                beforeAddLiquidity: false,
                 afterAddLiquidity: false,
-                beforeRemoveLiquidity: true,
+                beforeRemoveLiquidity: false,
                 afterRemoveLiquidity: false,
                 beforeSwap: true,
                 afterSwap: true,
