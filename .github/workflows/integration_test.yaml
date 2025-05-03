@@ -18,8 +18,6 @@ jobs:
       - name: Install dependencies
         run: |
           forge install
-          npm install
-          npm install -g npx
 
       - name: Integration test
         uses: ambersun1234/hardhat-test-action@v1
