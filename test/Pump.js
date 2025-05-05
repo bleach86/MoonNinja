@@ -21,6 +21,9 @@ describe("MoonNinja", function () {
 
     // Deploy WETH contract
 
+    const networkId = await ethers.provider.send("eth_chainId", []);
+    console.log("Network ID:", parseInt(networkId));
+
     const WETH_CONTRACT = await ethers.getContractFactory("WETH9");
     const weth = await WETH_CONTRACT.deploy();
     WETH = weth;
@@ -70,7 +73,7 @@ describe("MoonNinja", function () {
 
   describe("Creating a MoonNinjaToken", function () {
     it("Should create a MoonNinjaToken and show event details", async function () {
-      WETH.approve(moonNinja.target, ethers.parseEther("20"));
+      await WETH.approve(moonNinja.target, ethers.parseEther("20"));
 
       const tx = await moonNinja.createToken(
         {

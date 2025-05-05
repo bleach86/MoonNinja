@@ -157,10 +157,15 @@ contract MoonNinja is Ownable {
         if (msg.value > 0) {
             IMoonNinjaToken(cloneAddress).buyTokens{value: msg.value}(0);
         } else if (_WETHAmount > 0) {
+            console.log("WETH Amount: ", _WETHAmount);
+            console.log("Before transferFrom");
             IWETH(WETH).transferFrom(msg.sender, address(this), _WETHAmount);
+            console.log("After transferFrom");
 
             IWETH(WETH).approve(cloneAddress, _WETHAmount);
+            console.log("Before buyTokens");
             IMoonNinjaToken(cloneAddress).buyTokens(_WETHAmount);
+            console.log("After buyTokens");
         }
 
         uint tokenBalance = IMoonNinjaToken(cloneAddress).balanceOf(

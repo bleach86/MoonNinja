@@ -41,6 +41,10 @@ contract WETH9 {
     }
 
     function approve(address spender, uint256 amount) public returns (bool) {
+        console.log("approve");
+        console.log("msg.sender", msg.sender);
+        console.log("spender", spender);
+        console.log("amount", amount);
         allowance[msg.sender][spender] = amount;
         emit Approval(msg.sender, spender, amount);
         return true;
@@ -55,6 +59,14 @@ contract WETH9 {
         address to,
         uint256 amount
     ) public returns (bool) {
+        console.log("transferFrom");
+        console.log("from", from);
+        console.log("to", to);
+        console.log("amount", amount);
+        uint256 fromBalance = balanceOf[from];
+        console.log("fromBalance", fromBalance);
+        uint256 fromAllowance = allowance[from][msg.sender];
+        console.log("fromAllowance", fromAllowance);
         require(balanceOf[from] >= amount, "WETH9: insufficient balance");
 
         if (from != msg.sender) {
