@@ -24,7 +24,7 @@ describe("MoonNinja", function () {
     const WETH_CONTRACT = await ethers.getContractFactory("WETH9");
     const weth = await WETH_CONTRACT.deploy();
     WETH = weth;
-    decimals = 8;
+    decimals = 18;
 
     // deploy Liquidity manager
 
@@ -362,7 +362,16 @@ describe("MoonNinja", function () {
     });
 
     it("Should init liquidity pool", async function () {
-      await moonNinjaToken.initializeLiquidity();
+      const tx = await moonNinjaToken.initializeLiquidity();
+      const receipt = await tx.wait();
+      const event = receipt.logs.map((log) => {
+        try {
+          return moonNinjaToken.interface.parseLog(log);
+        } catch {
+          return null;
+        }
+      });
+      console.log("Event", event);
     });
   });
 });

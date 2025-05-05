@@ -69,6 +69,11 @@ contract WETH9 {
         balanceOf[to] += amount;
 
         emit Transfer(from, to, amount);
+        console.log("transferFrom weth");
+        console.log("from", from);
+        console.log("to", to);
+        console.log("amount", amount);
+
         return true;
     }
 }

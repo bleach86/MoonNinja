@@ -8,10 +8,10 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 /// @notice Shared constants used in scripts
 contract Constants {
     IPoolManager constant POOLMANAGER =
-        IPoolManager(address(0x67366782805870060151383F4BbFF9daB53e5cD6));
+        IPoolManager(address(0x5FbDB2315678afecb367f032d93F642f64180aa3));
     PositionManager constant posm =
         PositionManager(
-            payable(address(0x1Ec2eBf4F37E7363FDfe3551602425af0B3ceef9))
+            payable(address(0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0))
         );
     IAllowanceTransfer constant PERMIT2 =
         IAllowanceTransfer(address(0x000000000022D473030F116dDEE9F6B43aC78BA3));

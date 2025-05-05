@@ -38,7 +38,7 @@ interface IMoonNinja {
 interface IMNLiquidityManager {
     function initialize(address _moonNinjaToken, address _WETH) external;
 
-    function initLiquidity() external;
+    function initLiquidity() external returns (uint256 tokenId);
 }
 
 interface IWETH9 {
@@ -236,6 +236,33 @@ contract MoonNinjaToken is
         return true;
     }
 
+    function transferFrom(
+        address from,
+        address to,
+        uint256 amount
+    ) public override returns (bool) {
+        console.log("transferFrom");
+        uint256 balFrom = balanceOf(from);
+        uint256 balTo = balanceOf(to);
+        console.log("balFrom:", balFrom);
+        console.log("balTo:", balTo);
+        require(allowance(from, msg.sender) >= amount, "Not enough allowance");
+        require(balanceOf(from) >= amount, "Not enough balance");
+
+        _transfer(from, to, amount);
+
+        console.log("after transferFrom");
+        uint256 balFromAfter = balanceOf(from);
+        uint256 balToAfter = balanceOf(to);
+        console.log("balFromAfter:", balFromAfter);
+        console.log("balToAfter:", balToAfter);
+        console.log("liquidityManager:", liquidityManager);
+        console.log("from:", from);
+        console.log("to:", to);
+        console.log("amount:", amount);
+        return true;
+    }
+
     function buyTokens(uint amountWETH) public payable {
         require(msg.value > 1 || amountWETH > 0, "send some ETH");
         uint ethAmount;
@@ -309,9 +336,9 @@ contract MoonNinjaToken is
         return quoteBuy(ethAmount);
     }
 
-    function normalizeAmount(
+    function _normalizeAmount(
         uint256 amount
-    ) internal view returns (uint256 normalizedAmount) {
+    ) private view returns (uint256 normalizedAmount) {
         if (DECIMALS == DECIMALS_BASE) {
             return amount;
         } else if (DECIMALS > DECIMALS_BASE) {
@@ -321,9 +348,9 @@ contract MoonNinjaToken is
         }
     }
 
-    function deNormalizeAmount(
+    function _deNormalizeAmount(
         uint256 amount
-    ) internal view returns (uint256 denormalizedAmount) {
+    ) private view returns (uint256 denormalizedAmount) {
         if (DECIMALS == DECIMALS_BASE) {
             return amount;
         } else if (DECIMALS > DECIMALS_BASE) {
@@ -335,10 +362,10 @@ contract MoonNinjaToken is
 
     function quoteBuy(uint _ethAmount) public view returns (uint) {
         uint256 connectorBalance = IWETH9(WETH).balanceOf(address(this));
-        uint256 tokenSupply = normalizeAmount(balanceOf(address(this)));
+        uint256 tokenSupply = _normalizeAmount(balanceOf(address(this)));
 
         return
-            deNormalizeAmount(
+            _deNormalizeAmount(
                 calculatePurchaseReturn(
                     tokenSupply,
                     connectorBalance,
@@ -350,8 +377,8 @@ contract MoonNinjaToken is
 
     function quoteSell(uint _tokenAmount) public view returns (uint) {
         uint256 connectorBalance = IWETH9(WETH).balanceOf(address(this));
-        uint256 tokenAmount = normalizeAmount(_tokenAmount);
-        uint256 tokenSupply = normalizeAmount(balanceOf(address(this)));
+        uint256 tokenAmount = _normalizeAmount(_tokenAmount);
+        uint256 tokenSupply = _normalizeAmount(balanceOf(address(this)));
 
         return
             calculateSaleReturn(
@@ -378,7 +405,7 @@ contract MoonNinjaToken is
             );
     }
 
-    function initializeLiquidity() external {
+    function initializeLiquidity() external returns (uint256 tokenId) {
         require(isAdmin[msg.sender], "Only admins can initialize liquidity");
 
         // make approvals
@@ -386,7 +413,7 @@ contract MoonNinjaToken is
         IWETH9(WETH).approve(liquidityManager, type(uint256).max);
         _approve(address(this), liquidityManager, type(uint256).max);
 
-        IMNLiquidityManager(liquidityManager).initLiquidity();
+        uint256 tokenId = IMNLiquidityManager(liquidityManager).initLiquidity();
     }
 
     function decimals() public view override returns (uint8) {
